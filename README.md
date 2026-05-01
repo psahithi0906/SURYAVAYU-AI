@@ -3,9 +3,11 @@ SURYAVAYU AI is an AI-powered forecasting system for solar and wind energy gener
 
 
 ### PREREQUISITES :
+```
 Node==24
-Python==3.8
 
+Python==3.8
+```
 ### Commands to start:
 ```
 docker-compose build 
