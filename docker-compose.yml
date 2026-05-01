@@ -1,0 +1,15 @@
+services:
+  web:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+
+
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
