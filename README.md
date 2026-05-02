@@ -6,7 +6,7 @@ SURYAVAYU AI is an AI-powered forecasting system for solar and wind energy gener
 ```
 Node==24
 
-Python==3.8
+Python==3.12
 ```
 ### Commands to start:
 ```
