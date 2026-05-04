@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from forecast_engine import MODEL_VERSION, actuals, forecast, list_plants
+from forecast_engine import MODEL_VERSION, MODEL_TRAINED_AT, actuals, forecast, list_plants
 
 
 class ForecastRequest(BaseModel):
@@ -37,7 +37,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "model_versions": {"forecast": MODEL_VERSION},
-        "last_trained_at": "2026-05-04T00:00:00+00:00",
+        "last_trained_at": MODEL_TRAINED_AT,   # FIX #8: read from file, not a hardcoded literal
         "data_freshness": datetime.now(timezone.utc).isoformat(),
         "weather_provider": "Open-Meteo forecast API with deterministic fallback",
     }

@@ -5,21 +5,21 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   web:
     build: ./frontend
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_BASE_URL=http://localhost:8000
+      # FIX #1: Use Docker service name 'backend' (not localhost) so the
+      # frontend container can reach the backend container on the same network.
+      - REACT_APP_API_BASE_URL=http://backend:8000
     depends_on:
-      - backend
-
-  redis:
-    image: redis:alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      backend:
+        condition: service_healthy
