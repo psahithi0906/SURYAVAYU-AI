@@ -1,0 +1,51 @@
+{
+  "lightgbm": [
+    {
+      "plant_type": "solar",
+      "samples": 2250,
+      "nrmse": 0.0105,
+      "mae": 0.0055,
+      "r2": 0.9967
+    },
+    {
+      "plant_type": "wind",
+      "samples": 1800,
+      "nrmse": 0.0115,
+      "mae": 0.0062,
+      "r2": 0.9981
+    },
+    {
+      "plant_type": "hybrid",
+      "samples": 450,
+      "nrmse": 0.0336,
+      "mae": 0.0173,
+      "r2": 0.9569
+    }
+  ],
+  "lstm": [
+    {
+      "plant_type": "solar",
+      "model_family": "LSTM",
+      "samples": 1080,
+      "nrmse": 0.1153,
+      "mae": 0.0838,
+      "r2": 0.665
+    },
+    {
+      "plant_type": "wind",
+      "model_family": "LSTM",
+      "samples": 864,
+      "nrmse": 0.2187,
+      "mae": 0.1816,
+      "r2": -0.3496
+    },
+    {
+      "plant_type": "hybrid",
+      "model_family": "LSTM",
+      "samples": 216,
+      "nrmse": 0.1375,
+      "mae": 0.1153,
+      "r2": 0.0902
+    }
+  ]
+}

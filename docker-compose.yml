@@ -1,9 +1,19 @@
 services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+
   web:
     build: ./frontend
     ports:
       - "3000:3000"
-
+    environment:
+      - REACT_APP_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
 
   redis:
     image: redis:alpine
