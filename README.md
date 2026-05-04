@@ -104,7 +104,7 @@ The model implementation is in [backend/forecast_engine.py](/Users/sahithip/Docu
 To retrain:
 
 ```bash
-cd /Users/sahithip/Documents/personal/SURYAVAYU-AI
+cd <folder path>/SURYAVAYU-AI
 source .venv/bin/activate
 python backend/train_models.py
 ```
