@@ -144,13 +144,10 @@ def _synthetic_weather(plant: Plant, target_date: date, horizon_hours: int) -> d
 
 
 def _weather(plant: Plant, target_date: date, horizon_hours: int) -> tuple[dict[str, list[Any]], str]:
-    try:
-        hourly = _fetch_open_meteo(plant, target_date, horizon_hours)
-        if len(hourly["time"]) >= horizon_hours:
-            return hourly, "open-meteo"
-    except Exception:
-        pass
-    return _synthetic_weather(plant, target_date, horizon_hours), "synthetic-fallback"
+    hourly = _fetch_open_meteo(plant, target_date, horizon_hours)
+    if len(hourly["time"]) < horizon_hours:
+        raise RuntimeError("Insufficient weather data from Open-Meteo")
+    return hourly, "open-meteo"
 
 
 def _solar_mw(radiation: float, cloud: float, temp: float, capacity: float) -> float:

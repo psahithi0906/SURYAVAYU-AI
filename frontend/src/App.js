@@ -24,6 +24,41 @@ function formatHour(timestamp) {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function Homepage({ onExplore }) {
+  return (
+    <div className="homepage">
+      <header className="hero">
+        <div className="hero-content">
+          <h1>SURYAVAYU AI</h1>
+          <p>Real-Time Renewable Energy Forecasting for Karnataka's Sustainable Future</p>
+          <button onClick={onExplore} className="cta-button">Explore Dashboard</button>
+        </div>
+      </header>
+      <section className="features">
+        <h2>Key Features</h2>
+        <div className="feature-grid">
+          <div className="feature">
+            <h3>Real-Time Forecasting</h3>
+            <p>Hourly predictions using live weather data and ML models.</p>
+          </div>
+          <div className="feature">
+            <h3>Uncertainty Quantification</h3>
+            <p>P10/P50/P90 bands for confident decision-making.</p>
+          </div>
+          <div className="feature">
+            <h3>Explainable AI</h3>
+            <p>SHAP-style drivers for operational insights.</p>
+          </div>
+          <div className="feature">
+            <h3>Multi-Asset Support</h3>
+            <p>Solar, wind, and hybrid plants across Karnataka.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ForecastChart({ points, actuals, capacity }) {
   const width = 880;
   const height = 320;
@@ -154,6 +189,7 @@ function KpiStrip({ forecast }) {
 }
 
 function App() {
+  const [page, setPage] = useState('home');
   const [plants, setPlants] = useState(fallbackPlants);
   const [selectedPlantId, setSelectedPlantId] = useState('SOLAR_001');
   const [targetDate, setTargetDate] = useState(todayIso());
@@ -218,14 +254,18 @@ function App() {
     };
   }, [selectedPlantId, targetDate, horizon]);
 
+  if (page === 'home') {
+    return <Homepage onExplore={() => setPage('dashboard')} />;
+  }
+
   return (
     <main className="app">
       <section className="hero">
         <div>
-          <p className="eyebrow">VASUDHA AI · KREDL / KSPDCL Hackathon</p>
+          <p className="eyebrow">SURYAVAYU AI · KREDL / KSPDCL Hackathon</p>
           <h1>Renewable generation forecasts for Karnataka's grid desk.</h1>
           <p className="heroCopy">
-            Open-Meteo weather, physics-aware solar and wind models, probabilistic P10/P50/P90 bands, and operator-readable forecast drivers in one live console.
+            Real-time Open-Meteo weather, ML models, probabilistic P10/P50/P90 bands, and explainable forecast drivers.
           </p>
         </div>
         <div className="heroBadge">
