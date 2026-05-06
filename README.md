@@ -5,7 +5,7 @@ SURYAVAYU AI is a hackathon-ready renewable energy forecasting console for Karna
 ## What is implemented
 
 - FastAPI backend with `/health`, `/plants`, `/forecast`, and `/actuals` endpoints.
-- Open-Meteo weather integration with a deterministic synthetic fallback so demos keep working offline.
+- Open-Meteo weather integration .
 - Trained LightGBM artifacts for solar, wind, and hybrid day-ahead forecasting.
 - PyTorch LSTM artifacts for intraday sequence forecasting.
 - Ten Karnataka renewable assets across solar, wind, and hybrid plants.
@@ -14,7 +14,7 @@ SURYAVAYU AI is a hackathon-ready renewable energy forecasting console for Karna
 - React dashboard with plant selector, date picker, KPI strip, forecast chart, driver chart, and Karnataka asset map.
 - Docker Compose stack for backend, frontend, and Redis.
 
-## Architecture
+## Prototype Architecture
 
 ```mermaid
 flowchart LR
@@ -23,8 +23,8 @@ flowchart LR
   B --> D["Trained ML forecast models"]
   D --> E["P10 / P50 / P90 forecast"]
   D --> F["Explainability drivers"]
-  H["Synthetic physics training data"] --> D
-  B --> G["Synthetic actuals for demo overlay"]
+  H["Physical training data"] --> D
+  B --> G[" actuals for demo overlay"]
 ```
 
 ## Quick start
