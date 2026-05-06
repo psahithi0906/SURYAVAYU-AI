@@ -5,6 +5,10 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SCADA_API_URL=https://api.kspdcl.com/scada/actuals
+      - SCADA_API_KEY=${SCADA_API_KEY:-}
+      - EMS_API_URL=https://api.kredl.com/ems/historical
+      - EMS_API_KEY=${EMS_API_KEY:-}
 
   web:
     build: ./frontend

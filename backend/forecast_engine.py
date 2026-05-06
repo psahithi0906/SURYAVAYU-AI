@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import math
+import os
 import random
 import urllib.parse
 import urllib.request
@@ -12,6 +14,14 @@ from typing import Any
 
 MODEL_VERSION = "vasudha-lightgbm-lstm-v3"
 MODEL_DIR = Path(__file__).resolve().parent / "models"
+METRICS_CACHE_FILE = Path(__file__).resolve().parent / "metrics_cache.json"
+
+# SCADA/EMS Integration Config
+SCADA_API_URL = os.getenv("SCADA_API_URL", "https://api.kspdcl.com/scada/actuals")
+SCADA_API_KEY = os.getenv("SCADA_API_KEY", "")
+EMS_API_URL = os.getenv("EMS_API_URL", "https://api.kredl.com/ems/historical")
+EMS_API_KEY = os.getenv("EMS_API_KEY", "")
+
 FEATURE_NAMES = [
     "hour_sin",
     "hour_cos",
@@ -31,6 +41,38 @@ FEATURE_NAMES = [
 ]
 _MODEL_CACHE: dict[str, Any] = {}
 _LSTM_CACHE: dict[str, Any] = {}
+
+METRICS_CACHE_FILE = Path(__file__).resolve().parent / "metrics_cache.json"
+
+
+def _load_metrics_store() -> dict[str, Any]:
+    if not METRICS_CACHE_FILE.exists():
+        return {}
+    try:
+        with METRICS_CACHE_FILE.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception:
+        return {}
+
+
+def _save_metrics_store() -> None:
+    try:
+        with METRICS_CACHE_FILE.open("w", encoding="utf-8") as handle:
+            json.dump(_METRICS_STORE, handle, indent=2)
+    except Exception:
+        pass
+
+
+def _update_metrics_store(plant_id: str, target_date: date, metrics: dict[str, Any]) -> None:
+    entry = _METRICS_STORE.setdefault(plant_id, {})
+    entry[target_date.isoformat()] = {
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "metrics": metrics,
+    }
+    _save_metrics_store()
+
+
+_METRICS_STORE: dict[str, Any] = _load_metrics_store()
 
 
 @dataclass(frozen=True)
@@ -326,22 +368,136 @@ def forecast(plant_id: str, target_date: date, horizon_hours: int = 24, forecast
         raise KeyError(f"Unknown plant_id: {plant_id}")
     horizon = min(max(horizon_hours, 1), 72)
     plant = PLANT_BY_ID[plant_id]
-    hourly, source = _weather(plant, target_date, horizon)
+    points, model_source, source, rows = _forecast_points(plant, target_date, horizon, forecast_type)
+    metrics, metrics_source = _compute_metrics_from_history(plant, target_date, horizon, forecast_type)
+    _update_metrics_store(plant_id, target_date, metrics)
+
+    return {
+        "plant_id": plant.plant_id,
+        "plant_name": plant.name,
+        "plant_type": plant.plant_type,
+        "capacity_mw": plant.capacity_mw,
+        "cluster_id": plant.cluster_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "forecast_type": forecast_type,
+        "model_version": MODEL_VERSION,
+        "model_source": model_source if points else "not-run",
+        "weather_source": source,
+        "points": points,
+        "top_drivers": _drivers(plant, rows),
+        "metrics": metrics,
+        "metrics_source": metrics_source,
+    }
+
+
+def _nrmse(points: list[dict[str, Any]], actual_points: list[dict[str, Any]], capacity: float) -> float:
+    if not points:
+        return 0.0
+    mse = sum((float(actual["actual_mw"]) - float(point["p50"])) ** 2 for point, actual in zip(points, actual_points)) / len(points)
+    return math.sqrt(mse) / max(capacity, 1.0)
+
+
+def _coverage_p10_p90(points: list[dict[str, Any]], actual_points: list[dict[str, Any]]) -> float:
+    if not points:
+        return 0.0
+    inside = sum(1 for point, actual in zip(points, actual_points) if point["p10"] <= actual["actual_mw"] <= point["p90"])
+    return inside / len(points)
+
+
+def _pinball_loss_p90(points: list[dict[str, Any]], actual_points: list[dict[str, Any]]) -> float:
+    if not points:
+        return 0.0
+    q = 0.9
+    loss = 0.0
+    for point, actual in zip(points, actual_points):
+        diff = float(actual["actual_mw"]) - float(point["p90"])
+        loss += max(q * diff, (q - 1) * diff)
+    return loss / len(points)
+
+
+def _baseline_improvement(points: list[dict[str, Any]], actual_points: list[dict[str, Any]]) -> float:
+    if len(points) < 2:
+        return 0.0
+    baseline_errors = []
+    model_errors = []
+    for idx, (point, actual) in enumerate(zip(points, actual_points)):
+        actual_value = float(actual["actual_mw"])
+        model_errors.append((actual_value - float(point["p50"])) ** 2)
+        baseline_value = float(actual_points[idx - 1]["actual_mw"]) if idx > 0 else actual_value
+        baseline_errors.append((actual_value - baseline_value) ** 2)
+    rmse_model = math.sqrt(sum(model_errors) / len(model_errors))
+    rmse_baseline = math.sqrt(sum(baseline_errors) / len(baseline_errors))
+    if rmse_baseline <= 0:
+        return 0.0
+    return max(-1.0, 1 - rmse_model / rmse_baseline)
+
+
+def _compute_metrics_from_history(plant: Plant, target_date: date, horizon_hours: int, forecast_type: str) -> tuple[dict[str, Any], str]:
+    history_date = target_date - timedelta(days=1)
+    try:
+        points, _, _, _ = _forecast_points(plant, history_date, horizon_hours, forecast_type)
+        actual_points = _fetch_ems_historical_actuals(plant, history_date, horizon_hours)
+        if len(points) != len(actual_points):
+            raise ValueError("Historical actuals length mismatch")
+        metrics = {
+            "nrmse": round(_nrmse(points, actual_points, plant.capacity_mw), 3),
+            "coverage_p10_p90": round(_coverage_p10_p90(points, actual_points), 3),
+            "baseline_improvement": round(_baseline_improvement(points, actual_points), 3),
+            "pinball_loss_p90": round(_pinball_loss_p90(points, actual_points), 3),
+        }
+        return metrics, "ems-historical"
+    except Exception as e:
+        # No fallback - raise error for real-time requirement
+        raise RuntimeError(f"Failed to fetch real historical data from EMS: {e}")
+
+
+def _fetch_scada_actuals(plant: Plant, target_date: date, hours: int) -> list[dict[str, Any]]:
+    """Fetch real-time actuals from SCADA system."""
+    import requests
+    headers = {"Authorization": f"Bearer {SCADA_API_KEY}"} if SCADA_API_KEY else {}
+    params = {
+        "plant_id": plant.plant_id,
+        "start_date": target_date.isoformat(),
+        "hours": hours,
+    }
+    response = requests.get(SCADA_API_URL, headers=headers, params=params, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    # Expected format: [{"timestamp": "2026-05-05T10:00:00", "actual_mw": 150.5}, ...]
+    return data
+
+
+def _fetch_ems_historical_actuals(plant: Plant, target_date: date, hours: int) -> list[dict[str, Any]]:
+    """Fetch historical actuals from EMS for KPI computation."""
+    import requests
+    headers = {"Authorization": f"Bearer {EMS_API_KEY}"} if EMS_API_KEY else {}
+    params = {
+        "plant_id": plant.plant_id,
+        "date": target_date.isoformat(),
+        "hours": hours,
+    }
+    response = requests.get(EMS_API_URL, headers=headers, params=params, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    return data
+
+
+def _forecast_points(plant: Plant, target_date: date, horizon_hours: int, forecast_type: str = "day_ahead") -> tuple[list[dict[str, Any]], str, str, list[dict[str, float]]]:
+    hourly, source = _weather(plant, target_date, horizon_hours)
     rows: list[dict[str, float]] = []
     points: list[dict[str, Any]] = []
-
-    for idx, ts in enumerate(hourly["time"][:horizon]):
+    model_source = "not-run"
+    for idx, ts in enumerate(hourly["time"][:horizon_hours]):
         row = {
-            "temp": float(hourly.get("temperature_2m", [28] * horizon)[idx] or 28),
-            "cloud": float(hourly.get("cloud_cover", [35] * horizon)[idx] or 35),
-            "wind_speed": float(hourly.get("wind_speed_10m", [6] * horizon)[idx] or 6),
-            "wind_dir": float(hourly.get("wind_direction_10m", [220] * horizon)[idx] or 220),
-            "radiation": float(hourly.get("shortwave_radiation", [0] * horizon)[idx] or 0),
+            "temp": float(hourly.get("temperature_2m", [28] * horizon_hours)[idx] or 28),
+            "cloud": float(hourly.get("cloud_cover", [35] * horizon_hours)[idx] or 35),
+            "wind_speed": float(hourly.get("wind_speed_10m", [6] * horizon_hours)[idx] or 6),
+            "wind_dir": float(hourly.get("wind_direction_10m", [220] * horizon_hours)[idx] or 220),
+            "radiation": float(hourly.get("shortwave_radiation", [0] * horizon_hours)[idx] or 0),
         }
         rows.append(row)
         sequence_so_far = [_feature_vector(plant, prior_ts, prior_row) for prior_ts, prior_row in zip(hourly["time"][: idx + 1], rows)]
         p50, model_source = _model_prediction(plant, ts, row, forecast_type, sequence_so_far)
-
         weather_risk = 0.08 + (row["cloud"] / 100) * 0.11 + min(0.12, abs(row["wind_speed"] - 8) / 90)
         spread = max(plant.capacity_mw * 0.012, p50 * weather_risk)
         p10 = max(0, p50 - 1.28 * spread)
@@ -361,34 +517,13 @@ def forecast(plant_id: str, target_date: date, horizon_hours: int = 24, forecast
                 },
             }
         )
-
-    return {
-        "plant_id": plant.plant_id,
-        "plant_name": plant.name,
-        "plant_type": plant.plant_type,
-        "capacity_mw": plant.capacity_mw,
-        "cluster_id": plant.cluster_id,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "forecast_type": forecast_type,
-        "model_version": MODEL_VERSION,
-        "model_source": model_source if points else "not-run",
-        "weather_source": source,
-        "points": points,
-        "top_drivers": _drivers(plant, rows),
-        "metrics": {
-            "nrmse": 0.084 if plant.plant_type != "wind" else 0.091,
-            "coverage_p10_p90": 0.904,
-            "baseline_improvement": 0.47,
-            "pinball_loss_p90": 0.061,
-        },
-    }
+    return points, model_source, source, rows
 
 
 def actuals(plant_id: str, target_date: date, hours: int = 24) -> list[dict[str, Any]]:
-    result = forecast(plant_id, target_date, hours)
-    rng = random.Random(f"actual-{plant_id}-{target_date.isoformat()}")
-    values = []
-    for point in result["points"]:
-        actual = max(0, point["p50"] * (1 + rng.uniform(-0.045, 0.045)))
-        values.append({"timestamp": point["timestamp"], "actual_mw": round(actual, 2)})
-    return values
+    """Fetch real-time actuals from SCADA - no synthetic fallbacks."""
+    if plant_id not in PLANT_BY_ID:
+        raise KeyError(f"Unknown plant_id: {plant_id}")
+    plant = PLANT_BY_ID[plant_id]
+    # Fetch real data - fail if not available
+    return _fetch_scada_actuals(plant, target_date, hours)
