@@ -1,6 +1,6 @@
-# VASUDHA AI
+# SURYAVAYU AI
 
-VASUDHA AI is a hackathon-ready renewable energy forecasting console for Karnataka's grid operators. It combines Open-Meteo weather data, physics-aware solar/wind generation models, probabilistic P10/P50/P90 bands, SHAP-style feature drivers, and a polished React dashboard for KREDL/KSPDCL-style operations.
+SURYAVAYU AI is a hackathon-ready renewable energy forecasting console for Karnataka's grid operators. It combines Open-Meteo weather data, physics-aware solar/wind generation models, probabilistic P10/P50/P90 bands, SHAP-style feature drivers, and a polished React dashboard for KREDL/KSPDCL-style operations.
 
 ## What is implemented
 
